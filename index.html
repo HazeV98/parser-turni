@@ -3,54 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ACTV v1.0</title>
+    <title>Parser Turni ACTV v1.1</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #eef2f5; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
-        h1 { color: #00796b; text-align: center; border-bottom: 3px solid #b2dfdb; padding-bottom: 10px; }
-        .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 25px 0; }
-        .box { border: 2px dashed #00796b; padding: 20px; border-radius: 10px; text-align: center; background: #fafcfc; transition: 0.3s; }
-        .box:hover { border-color: #004d40; background: #e0f2f1; }
-        button { background: #00796b; color: white; border: none; padding: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1.2rem; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #004d40; }
-        #log { margin-top: 20px; padding: 15px; background: #263238; color: #80cbc4; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.85rem; height: 350px; overflow-y: auto; }
-        .progress { height: 10px; background: #eceff1; border-radius: 5px; margin-bottom: 15px; overflow: hidden; display: none; }
+        :root { --primary: #00796b; --primary-dark: #004d40; --bg: #eef2f5; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 15px; background: var(--bg); margin: 0; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        h1 { color: var(--primary); text-align: center; border-bottom: 3px solid #b2dfdb; padding-bottom: 10px; font-size: 1.8rem; }
+        
+        .upload-section { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+            gap: 15px; 
+            margin: 20px 0; 
+        }
+        
+        .box { 
+            border: 2px dashed var(--primary); 
+            padding: 25px 15px; 
+            border-radius: 10px; 
+            text-align: center; 
+            background: #fafcfc; 
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        .box.drag-over { background: #e0f2f1; border-color: var(--primary-dark); transform: scale(1.02); }
+        .box label { cursor: pointer; display: block; font-weight: 600; margin-bottom: 10px; color: var(--primary-dark); }
+        .box input { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+        .file-name { display: block; margin-top: 10px; font-size: 0.85rem; color: #666; font-style: italic; }
+
+        button { 
+            background: var(--primary); 
+            color: white; 
+            border: none; 
+            padding: 16px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-size: 1.1rem; 
+            font-weight: bold; 
+            transition: 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover { background: var(--primary-dark); }
+        button:active { transform: translateY(1px); }
+
+        #log { 
+            margin-top: 20px; 
+            padding: 15px; 
+            background: #263238; 
+            color: #80cbc4; 
+            border-radius: 8px; 
+            font-family: 'Courier New', monospace; 
+            font-size: 0.85rem; 
+            height: 300px; 
+            overflow-y: auto; 
+            border: 1px solid #10191d;
+        }
+        .progress { height: 8px; background: #eceff1; border-radius: 4px; margin-bottom: 15px; overflow: hidden; display: none; }
         #bar { height: 100%; background: #26a69a; width: 0%; transition: 0.2s; }
-        .stat-box { display: flex; justify-content: space-around; margin-top: 15px; font-weight: bold; color: #004d40; font-size: 1.1rem; }
+        
+        .stat-box { 
+            display: flex; 
+            flex-wrap: wrap;
+            justify-content: space-around; 
+            margin-top: 15px; 
+            gap: 10px;
+            font-weight: bold; 
+            color: var(--primary-dark); 
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 1.4rem; }
+            .box { padding: 20px 10px; }
+            button { padding: 14px; font-size: 1rem; }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Parser Turni ACTV v1.0</h1>
+    <h1>Parser Turni ACTV v1.1</h1>
     
     <div class="upload-section">
-        <div class="box"><label>1. <b>rotazioni.txt</b></label><br><br><input type="file" id="rotTxt" accept=".txt"></div>
-        <div class="box"><label>2. <b>PDF Turni ACTV</b></label><br><br><input type="file" id="pdfFile" accept="application/pdf"></div>
+        <div class="box" id="drop-zone-rot">
+            <label>1. Carica <b>rotazioni.json</b></label>
+            <span class="file-name" id="name-rot">Nessun file selezionato</span>
+            <input type="file" id="rotJson" accept=".json">
+        </div>
+        <div class="box" id="drop-zone-pdf">
+            <label>2. Carica <b>PDF Turni</b></label>
+            <span class="file-name" id="name-pdf">Nessun file selezionato</span>
+            <input type="file" id="pdfFile" accept="application/pdf">
+        </div>
     </div>
 
     <div class="progress" id="pDiv"><div id="bar"></div></div>
-    <button id="startBtn">Avvia Estrazione</button>
+    <button id="startBtn">Avvia Estrazione Dati</button>
     
     <div class="stat-box">
-        <span id="statTot">Codici inseriti: 0</span>
-        <span id="statTrovati">Turni Trovati: 0</span>
+        <span id="statTot">Codici: 0</span>
+        <span id="statTrovati">Trovati: 0</span>
     </div>
     
-    <div id="log">Pronto a scansionare.</div>
+    <div id="log">Trascina i file o clicca sui riquadri per iniziare.</div>
 </div>
 
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
+    // Gestione visuale Drag and Drop e nomi file
+    function setupDropZone(inputId, zoneId, nameId) {
+        const input = document.getElementById(inputId);
+        const zone = document.getElementById(zoneId);
+        const nameLabel = document.getElementById(nameId);
+
+        input.addEventListener('change', () => {
+            if(input.files[0]) nameLabel.innerText = input.files[0].name;
+        });
+
+        ['dragover', 'dragenter'].forEach(evt => {
+            zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+        });
+        ['dragleave', 'dragend', 'drop'].forEach(evt => {
+            zone.addEventListener(evt, () => zone.classList.remove('drag-over'));
+        });
+    }
+
+    setupDropZone('rotJson', 'drop-zone-rot', 'name-rot');
+    setupDropZone('pdfFile', 'drop-zone-pdf', 'name-pdf');
+
     function addLog(msg, color = "#80cbc4") {
         const l = document.getElementById('log');
-        const span = document.createElement('div');
-        span.style.color = color;
-        span.innerText = "> " + msg;
-        l.appendChild(span);
+        const div = document.createElement('div');
+        div.style.color = color;
+        div.innerText = "> " + msg;
+        l.appendChild(div);
         l.scrollTop = l.scrollHeight;
     }
 
@@ -60,11 +150,9 @@
                 .replace(/\s+/g, ' ').trim();
     }
 
-    // Mappatura specifica ed esatta per le linee ACTV
     function matchLineeACTV(codPref, pdfLin) {
         const c = codPref.toUpperCase();
         const p = pdfLin.toUpperCase().replace(/\s+/g, '');
-        
         if (c === "1C") return p === "1";
         if (c === "2C") return p === "2";
         if (c === "3P") return p === "3";
@@ -74,14 +162,13 @@
         if (c === "7P") return p === "7";
         if (c === "M1") return p === "M1";
         if (c === "M2") return p === "M2";
-        
-        return false; // CO, Disp e qualsiasi altra riga vengono ignorati
+        return false;
     }
 
     function parseCodice(c) {
+        if (!c || typeof c !== 'string') return null;
         c = c.toLowerCase().trim();
         if (c === "disp" || c.length < 3) return null;
-        // Divide in modo intelligente: 4p04, m204, 1c11...
         let match = c.match(/^(\d+[a-z]|[a-z]\d+|[a-z]{2,})(\d+)$/i);
         if (match) {
             return { or: c.toUpperCase(), pref: match[1].toUpperCase(), num: parseInt(match[2], 10).toString() };
@@ -90,19 +177,32 @@
     }
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        const rotFile = document.getElementById('rotTxt').files[0];
+        const rotFile = document.getElementById('rotJson').files[0];
         const pdfFile = document.getElementById('pdfFile').files[0];
-        if(!rotFile || !pdfFile) return alert("Carica entrambi i file!");
+        if(!rotFile || !pdfFile) return alert("Per favore, carica entrambi i file!");
 
         document.getElementById('pDiv').style.display = "block";
         document.getElementById('log').innerHTML = "";
         
-        const rotText = await rotFile.text();
-        const codiciRaw = rotText.match(/([a-zA-Z0-9]+)/g) || [];
-        const mappa = Array.from(new Set(codiciRaw.map(c => JSON.stringify(parseCodice(c))))).map(s => JSON.parse(s)).filter(x => x !== null);
+        // Estrazione codici da JSON (tutte le chiavi)
+        let mappa = [];
+        try {
+            const rotData = JSON.parse(await rotFile.text());
+            let codiciFlat = [];
+            for (let key in rotData) {
+                if (Array.isArray(rotData[key])) {
+                    codiciFlat = codiciFlat.concat(rotData[key]);
+                }
+            }
+            mappa = Array.from(new Set(codiciFlat.map(c => JSON.stringify(parseCodice(c)))))
+                         .map(s => JSON.parse(s))
+                         .filter(x => x !== null);
+        } catch (e) {
+            return alert("Errore nel formato del file JSON!");
+        }
         
-        document.getElementById('statTot').innerText = "Codici inseriti: " + mappa.length;
-        addLog("Inizio scansione per " + mappa.length + " turni ACTV...");
+        document.getElementById('statTot').innerText = "Codici: " + mappa.length;
+        addLog("Inizio analisi di " + mappa.length + " turni ACTV...");
 
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -113,21 +213,16 @@
             document.getElementById('bar').style.width = (i/pdf.numPages*100) + "%";
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
-            const rawText = content.items.map(item => item.str).join(" ");
-            const cleanText = rawText.replace(/\s+/g, " ");
+            const cleanText = content.items.map(item => item.str).join(" ").replace(/\s+/g, " ");
 
-            // LA MAGIA: Dividiamo il testo della pagina usando la parola TURNO per processare i due turni presenti!
             const turniNellaPagina = cleanText.split(/TURNO[:\s]+/i);
 
             for (let b = 1; b < turniNellaPagina.length; b++) {
                 const bloccoTurno = turniNellaPagina[b];
-                
-                // Estrae il numero del turno all'inizio del blocco (es. "1°" -> "1")
                 const numMatch = bloccoTurno.match(/^(\d+)/);
                 if (!numMatch) continue;
                 const pdfT = parseInt(numMatch[1], 10).toString();
 
-                // Cerca la linea dentro il blocco o nella testata della pagina
                 let pdfL = "";
                 const linMatch = bloccoTurno.match(/LINEA[:\s]+([A-Z0-9.]+)/i);
                 if (linMatch) {
@@ -141,10 +236,7 @@
                     const targets = mappa.filter(c => c.num === pdfT && matchLineeACTV(c.pref, pdfL));
 
                     if (targets.length > 0) {
-                        // Isoliamo solo l'intestazione superiore prima delle tabelle ("Nota servizio" o "EQUIPAGGIO")
                         const headerArea = bloccoTurno.split(/(?:Nota servizio|EQUIPAGGIO|LIN\s+TV)/i)[0];
-                        
-                        // Cerchiamo le coppie Luogo e Ora
                         const pairRegex = /([A-Z.\s'\/]{3,})\s+(\d{1,2}\.\d{2})/g;
                         let matches = [];
                         let m;
@@ -153,7 +245,6 @@
                         }
 
                         if (matches.length >= 2) {
-                            // Se c'è uno spezzato, prenderà automaticamente il primo e l'ultimo valore!
                             const start = matches[0];
                             const end = matches[matches.length - 1];
 
@@ -166,8 +257,8 @@
                                         luogoFine: end.luogo
                                     };
                                     trovatiCount++;
-                                    document.getElementById('statTrovati').innerText = "Turni Trovati: " + trovatiCount;
-                                    addLog("TROVATO: " + t.or + " (Linea " + pdfL + " Turno " + pdfT + ")", "#00e676");
+                                    document.getElementById('statTrovati').innerText = "Trovati: " + trovatiCount;
+                                    addLog("OK: " + t.or + " (" + pdfL + " T." + pdfT + ")", "#00e676");
                                 }
                             });
                         }
@@ -180,14 +271,13 @@
             const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "info_turni.json";
+            a.download = "info_turni_actv.json";
             a.click();
-            addLog("\nCOMPLETATO! Scaricato il JSON con " + trovatiCount + " turni.", "#18ffff");
+            addLog("\nFINE! Creato database con " + trovatiCount + " turni.", "#18ffff");
         } else {
-            addLog("\nERRORE: Nessun turno corrispondente trovato.", "#ff5252");
+            addLog("\nNESSUN MATCH: Verifica la corrispondenza tra JSON e PDF.", "#ff5252");
         }
     });
 </script>
 </body>
 </html>
-
