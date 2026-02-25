@@ -3,138 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ATVO v2.4</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <title>Parser Turni ATVO v2.5</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; }
-        .container { max-width: 850px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #1a73e8; text-align: center; }
-        .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .upload-box { border: 2px dashed #bbb; padding: 15px; border-radius: 8px; text-align: center; background: #fafafa; }
-        button { background: #1a73e8; color: white; border: none; padding: 15px; border-radius: 6px; cursor: pointer; width: 100%; font-size: 1.1rem; font-weight: bold; }
-        #log { margin-top: 20px; padding: 15px; background: #1e1e1e; color: #00ff00; border-radius: 6px; font-family: monospace; font-size: 0.8rem; height: 350px; overflow-y: auto; white-space: pre-wrap; }
-        .log-ok { color: #00ff00; }
-        .log-info { color: #888; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; text-align: center; font-size: 1.5rem; }
+        .upload-section { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
+        .box { border: 2px dashed #cbd5e0; padding: 20px; border-radius: 10px; text-align: center; transition: 0.3s; }
+        .box:hover { border-color: #1a73e8; background: #f8fbff; }
+        button { background: #1a73e8; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 1.1rem; font-weight: bold; margin-top: 10px; }
+        button:disabled { background: #a0aec0; cursor: not-allowed; }
+        #log { margin-top: 20px; padding: 15px; background: #2d3748; color: #63ff7b; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.85rem; height: 300px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #1a202c; }
+        .progress-container { margin-top: 10px; background: #edf2f7; border-radius: 5px; height: 10px; display: none; }
+        #progressBar { background: #48bb78; width: 0%; height: 100%; border-radius: 5px; transition: width 0.1s; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Parser Turni v2.4 - Estrazione Pulita</h1>
+    <h1>Parser Turni v2.5 - Anti-Blocco</h1>
     
     <div class="upload-section">
-        <div class="upload-box">
-            <label>1. <b>rotazioni.txt</b></label><br><input type="file" id="rotTxt" accept=".txt">
+        <div class="box">
+            <label><b>1. File Rotazioni (.txt)</b></label><br><input type="file" id="rotTxt" accept=".txt">
         </div>
-        <div class="upload-box">
-            <label>2. <b>PDF Turni</b></label><br><input type="file" id="pdfFile" accept="application/pdf">
+        <div class="box">
+            <label><b>2. PDF Completo</b></label><br><input type="file" id="pdfFile" accept="application/pdf">
         </div>
     </div>
 
-    <button id="startBtn">Avvia Estrazione Migliorata</button>
+    <button id="startBtn">Avvia Analisi Sicura</button>
+    
+    <div class="progress-container" id="pCont">
+        <div id="progressBar"></div>
+    </div>
 
-    <div id="log">Pronto...</div>
+    <div id="log">In attesa dei file...</div>
 </div>
 
 <script>
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const logDiv = document.getElementById('log');
-    function addLog(msg, type = '') {
-        const span = document.createElement('span');
-        span.className = type;
-        span.innerText = "\n> " + msg;
-        logDiv.appendChild(span);
+    const startBtn = document.getElementById('startBtn');
+    const progressBar = document.getElementById('progressBar');
+    const pCont = document.getElementById('pCont');
+
+    function addLog(msg) {
+        logDiv.innerText += "\n> " + msg;
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
-    // Pulisce il nome del luogo dai residui del PDF
-    function pulisciLuogo(testo) {
-        if (!testo) return "";
-        return testo
-            .replace(/DURATA.*/gi, '')
-            .replace(/Servizio:.*/gi, '')
-            .replace(/Validità:.*/gi, '')
-            .replace(/Tipologia:.*/gi, '')
-            .replace(/alle/gi, '')
-            .replace(/[_\-]{2,}/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
+    function pulisciLuogo(t) {
+        if(!t) return "";
+        return t.replace(/DURATA.*/gi, '').replace(/Servizio:.*/gi, '').replace(/Validità:.*/gi, '')
+                .replace(/Tipologia:.*/gi, '').replace(/alle/gi, '').replace(/[_\-]{2,}/g, '')
+                .replace(/\s+/g, ' ').trim();
     }
 
-    function parseCodice(codice) {
-        codice = codice.toLowerCase().trim();
-        if (codice === 'disp' || codice.length < 3) return null;
-        let mMatch = codice.match(/^([a-z]\d)(\d+)$/);
-        if (mMatch) return { originale: codice.toUpperCase(), linea: mMatch[1], turno: parseInt(mMatch[2], 10).toString() };
-        let stdMatch = codice.match(/^(\d+)[a-z](\d+)$/);
-        if (stdMatch) return { originale: codice.toUpperCase(), linea: stdMatch[1], turno: parseInt(stdMatch[2], 10).toString() };
+    function parseCodice(c) {
+        c = c.toLowerCase().trim();
+        let m = c.match(/^([a-z]\d)(\d+)$/);
+        if (m) return { or: c.toUpperCase(), l: m[1], t: parseInt(m[2], 10).toString() };
+        let s = c.match(/^(\d+)[a-z](\d+)$/);
+        if (s) return { or: c.toUpperCase(), l: s[1], t: parseInt(s[2], 10).toString() };
         return null;
     }
 
-    document.getElementById('startBtn').addEventListener('click', async () => {
+    startBtn.addEventListener('click', async () => {
         const rotFile = document.getElementById('rotTxt').files[0];
         const pdfFile = document.getElementById('pdfFile').files[0];
-        if (!rotFile || !pdfFile) return;
 
-        logDiv.innerText = "Inizio analisi...";
-        const rotText = await rotFile.text();
-        const codici = (rotText.match(/([a-zA-Z0-9]+)/g) || [])
-            .map(c => parseCodice(c)).filter(c => c !== null);
-        
-        const mappaUnica = Array.from(new Set(codici.map(c => JSON.stringify(c)))).map(s => JSON.parse(s));
+        if (!rotFile || !pdfFile) { alert("Inserisci entrambi i file!"); return; }
 
-        const arrayBuffer = await pdfFile.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
-        let dbTurni = {};
+        startBtn.disabled = true;
+        logDiv.innerText = "Inizio processo...";
+        pCont.style.display = "block";
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            const text = content.items.map(item => item.str).join(" ");
+        try {
+            const rotText = await rotFile.text();
+            const codiciRaw = rotText.match(/([a-zA-Z0-9]+)/g) || [];
+            const mappaUnica = Array.from(new Set(codiciRaw.map(c => JSON.stringify(parseCodice(c))))).map(s => JSON.parse(s)).filter(x => x !== null);
             
-            const lineaMatch = text.match(/Linea:?\s*([a-z0-9.]+)/i);
-            const turnoMatch = text.match(/TURNO:?\s*(\d+)/i);
+            addLog("Codici da cercare: " + mappaUnica.length);
 
-            if (lineaMatch && turnoMatch) {
-                const lPDF = lineaMatch[1].toLowerCase().split('.')[0];
-                const tPDF = parseInt(turnoMatch[1], 10).toString();
-                const targets = mappaUnica.filter(c => c.linea.toLowerCase() === lPDF && c.turno === tPDF);
+            const arrayBuffer = await pdfFile.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+            let dbTurni = {};
 
-                if (targets.length > 0) {
-                    // Dividiamo il testo in due parti: MONTA e SMONTA
-                    const parti = text.split(/SMONTA/i);
-                    const zonaMonta = parti[0]; // Tutto ciò che c'è prima di SMONTA
-                    const zonaSmonta = parti[1] || ""; // Tutto ciò che c'è dopo
+            for (let i = 1; i <= pdf.numPages; i++) {
+                // Aggiornamento interfaccia
+                const percent = Math.round((i / pdf.numPages) * 100);
+                progressBar.style.width = percent + "%";
+                if (i % 10 === 0) addLog("Analisi pagina " + i + " di " + pdf.numPages + "...");
 
-                    const montaOra = zonaMonta.match(/(\d{1,2}\.\d{2})/);
-                    const montaLuogo = zonaMonta.match(/MONTA\s+(?:alle\s+)?(.*?)(?=\d{1,2}\.\d{2}|$)/i);
-                    
-                    const smontaOra = zonaSmonta.match(/(\d{1,2}\.\d{2})/);
-                    const smontaLuogo = zonaSmonta.match(/(.*?)(?=\s+alle\s+\d{1,2}\.\d{2}|$)/i);
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const text = content.items.map(item => item.str).join(" ").replace(/\s+/g, " ");
 
-                    if (montaOra && smontaOra) {
-                        targets.forEach(t => {
-                            dbTurni[t.originale] = {
-                                inizio: montaOra[0].replace('.', ':'),
-                                luogoInizio: pulisciLuogo(montaLuogo ? montaLuogo[1] : ""),
-                                fine: smontaOra[0].replace('.', ':'),
-                                luogoFine: pulisciLuogo(smontaLuogo ? smontaLuogo[1] : "")
-                            };
-                            addLog("OK: " + t.originale, "log-ok");
-                        });
+                const lM = text.match(/Linea:?\s*([a-z0-9.]+)/i);
+                const tM = text.match(/TURNO:?\s*(\d+)/i);
+
+                if (lM && tM) {
+                    const lP = lM[1].toLowerCase().split('.')[0];
+                    const tP = parseInt(tM[1], 10).toString();
+                    const targets = mappaUnica.filter(c => c.l.toLowerCase() === lP && c.t === tP);
+
+                    if (targets.length > 0) {
+                        const parti = text.split(/SMONTA/i);
+                        const zM = parti[0];
+                        const zS = parti[1] || "";
+
+                        const mO = zM.match(/(\d{1,2}\.\d{2})/);
+                        const mL = zM.match(/MONTA\s+(?:alle\s+)?(.*?)(?=\d{1,2}\.\d{2}|$)/i);
+                        const sO = zS.match(/(\d{1,2}\.\d{2})/);
+                        const sL = zS.match(/(.*?)(?=\s+alle\s+\d{1,2}\.\d{2}|$)/i);
+
+                        if (mO && sO) {
+                            targets.forEach(t => {
+                                dbTurni[t.or] = {
+                                    inizio: mO[0].replace('.', ':'),
+                                    luogoInizio: pulisciLuogo(mL ? mL[1] : ""),
+                                    fine: sO[0].replace('.', ':'),
+                                    luogoFine: pulisciLuogo(sL ? sL[1] : "")
+                                };
+                                addLog("TROVATO: " + t.or);
+                            });
+                        }
                     }
                 }
+                // Pausa tecnica ogni pagina per non bloccare il browser
+                await new Promise(resolve => setTimeout(resolve, 1));
             }
-        }
 
-        if (Object.keys(dbTurni).length > 0) {
-            const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = "database_turni.json"; a.click();
-            addLog("\nFINE! Database scaricato correttamente.", "log-ok");
+            if (Object.keys(dbTurni).length > 0) {
+                const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = "database_turni.json";
+                a.click();
+                addLog("\nCOMPLETATO! File scaricato.");
+            } else {
+                addLog("\nNESSUN TURNO TROVATO. Controlla i file.");
+            }
+
+        } catch (e) {
+            addLog("ERRORE CRITICO: " + e.message);
+        } finally {
+            startBtn.disabled = false;
         }
     });
 </script>
