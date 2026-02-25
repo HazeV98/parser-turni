@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estrattore Turni Mirato</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f7; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h1 { color: #1a73e8; border-bottom: 2px solid #e8f0fe; padding-bottom: 10px; }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+        label { font-weight: bold; display: block; margin-bottom: 8px; }
+        textarea { width: 100%; height: 120px; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-sizing: border-box; font-family: monospace; }
+        button { background: #1a73e8; color: white; border: none; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; transition: background 0.3s; }
+        button:hover { background: #1557b0; }
+        #status { margin-top: 20px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Parser Turni: Filtro Rotazione</h1>
+    
+    <div class="section">
+        <label>1. Elenco Codici Rotazione (uno per riga o separati da spazio):</label>
+        <textarea id="rotazioneInput" placeholder="Esempio:&#10;4P01&#10;4P04&#10;13O05"></textarea>
+        <small>Il programma cercherà solo questi codici nel PDF.</small>
+    </div>
+
+    <div class="section">
+        <label>2. Seleziona il PDF completo dei turni:</label>
+        <input type="file" id="pdfInput" accept="application/pdf">
+    </div>
+
+    <button id="processBtn">Estrai solo i turni in lista</button>
+
+    <div id="status"></div>
+</div>
+
+<script>
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    document.getElementById('processBtn').addEventListener('click', async () => {
+        const file = document.getElementById('pdfInput').files[0];
+        const rotazioneTesto = document.getElementById('rotazioneInput').value.trim();
+        const statusDiv = document.getElementById('status');
+
+        if (!file || !rotazioneTesto) {
+            alert("Inserisci sia i codici della rotazione che il file PDF.");
+            return;
+        }
+
+        // 1. Pulizia e parsing dei codici inseriti dall'utente
+        const codiciDaCercare = rotazioneTesto.split(/[\s,]+/).map(c => {
+            const match = c.match(/^(\d+)[a-zA-Z](\d+)$/);
+            if (match) {
+                return { 
+                    originale: c, 
+                    linea: match[1], 
+                    turno: parseInt(match[2], 10).toString() // Toglie lo zero iniziale se presente (es: 01 -> 1)
+                };
+            }
+            return null;
+        }).filter(c => c !== null);
+
+        statusDiv.style.display = 'block';
+        statusDiv.className = 'status';
+        statusDiv.innerText = "Analisi del PDF in corso... cercando " + codiciDaCercare.length + " turni.";
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let databaseFiltrato = {};
+
+            // 2. Scansione del PDF
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const text = content.items.map(item => item.str).join(" ");
+                
+                // Estraiamo Linea e Turno dalla pagina corrente
+                const lineaMatch = text.match(/Linea:\s*(\d+\.?\d*)/i);
+                const turnoMatch = text.match(/TURNO:\s*(\d+)°/i);
+
+                if (lineaMatch && turnoMatch) {
+                    const lineaPDF = lineaMatch[1];
+                    const turnoPDF = turnoMatch[1];
+
+                    // Vediamo se questa pagina corrisponde a uno dei codici richiesti
+                    const corrispondenza = codiciDaCercare.find(c => c.linea === lineaPDF && c.turno === turnoPDF);
+
+                    if (corrispondenza) {
+                        const montaMatch = text.match(/MONTA\s+alle\s+([A-Z.\s]+)\s+(\d{1,2}\.\d{2})/i);
+                        const smontaMatch = text.match(/SMONTA\s+([A-Z.\s]+)\s+alle\s+(\d{1,2}\.\d{2})/i);
+
+                        if (montaMatch && smontaMatch) {
+                            // Salviamo usando il codice originale (es. 4P01) come chiave
+                            databaseFiltrato[corrispondenza.originale] = {
+                                inizio: montaMatch[2].replace('.', ':'),
+                                luogoInizio: montaMatch[1].trim(),
+                                fine: smontaMatch[2].replace('.', ':'),
+                                luogoFine: smontaMatch[1].trim()
+                            };
+                        }
+                    }
+                }
+            }
+
+            // 3. Generazione File
+            const finalJson = JSON.stringify(databaseFiltrato, null, 2);
+            const blob = new Blob([finalJson], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "turni_filtrati.json";
+            a.click();
+
+            statusDiv.className = 'status success';
+            statusDiv.innerText = "Fatto! Estratti " + Object.keys(databaseFiltrato).length + " turni su " + codiciDaCercare.length + " richiesti.";
+
+        } catch (error) {
+            statusDiv.innerText = "Errore durante l'analisi.";
+            console.error(error);
+        }
+    });
+</script>
+
+</body>
+</html>
