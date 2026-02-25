@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ACTV v3.1</title>
+    <title>Parser Turni ACTV v1.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #eef2f5; }
@@ -23,7 +23,7 @@
 <body>
 
 <div class="container">
-    <h1>Parser Turni ACTV v3.1 (Multi-Blocco)</h1>
+    <h1>Parser Turni ACTV v1.0</h1>
     
     <div class="upload-section">
         <div class="box"><label>1. <b>rotazioni.txt</b></label><br><br><input type="file" id="rotTxt" accept=".txt"></div>
@@ -31,7 +31,7 @@
     </div>
 
     <div class="progress" id="pDiv"><div id="bar"></div></div>
-    <button id="startBtn">Avvia Estrazione Totale</button>
+    <button id="startBtn">Avvia Estrazione</button>
     
     <div class="stat-box">
         <span id="statTot">Codici inseriti: 0</span>
@@ -180,7 +180,7 @@
             const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "database_actv_completo.json";
+            a.download = "info_turni.json";
             a.click();
             addLog("\nCOMPLETATO! Scaricato il JSON con " + trovatiCount + " turni.", "#18ffff");
         } else {
@@ -190,3 +190,4 @@
 </script>
 </body>
 </html>
+
