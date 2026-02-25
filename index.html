@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ATVO v2.7</title>
+    <title>Parser Turni ATVO v2.8</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; }
@@ -20,7 +20,7 @@
 <body>
 
 <div class="container">
-    <h1>Parser Turni v2.7 - Ultra Compatibility</h1>
+    <h1>Parser Turni v2.8 - Smart Anchor Engine</h1>
     
     <div class="upload-section">
         <div class="box"><label>1. <b>rotazioni.txt</b></label><br><br><input type="file" id="rotTxt" accept=".txt"></div>
@@ -28,7 +28,7 @@
     </div>
 
     <div class="progress" id="pDiv"><div id="bar"></div></div>
-    <button id="startBtn">Inizia Scansione Totale</button>
+    <button id="startBtn">Inizia Scansione Avanzata</button>
     <div id="log">Pronto.</div>
 </div>
 
@@ -42,24 +42,15 @@
         l.scrollTop = l.scrollHeight;
     }
 
-    // Pulisce il luogo eliminando TUTTE le scorie tecniche tipiche del PDF ATVO
-    function pulisciLuogo(testo) {
-        if(!testo) return "";
-        return testo
-            .replace(/MONTA|SMONTA|alle|DURATA|Servizio|Validità|Tipologia|INTERO|PICCOLE|UNITA'|Valid\.|Serv\.|F\.TE|P\.LE|P\.ROMA|[\d]{1,2}\.[\d]{2}|[:.\-_]{2,}/gi, (match) => {
-                // Teniamo F.TE e P.LE se sono parte del luogo reale
-                if(/F\.TE|P\.LE|P\.ROMA/i.test(match)) return match;
-                return "";
-            })
-            .split(/Validità|Tipologia|DURATA/i)[0] // Taglio netto se appaiono queste parole
-            .replace(/\s+/g, ' ')
-            .trim();
+    function pulisciLuogo(t) {
+        if(!t) return "";
+        return t.replace(/MONTA|SMONTA|alle|DURATA|Servizio|Validità|Tipologia|INTERO|PICCOLE|UNITA'|Nota|Indennità|[\d]{1,2}\.[\d]{2}|[:.\-_]{2,}/gi, "")
+                .replace(/\s+/g, ' ').trim();
     }
 
     function parseCodice(c) {
         c = c.toLowerCase().trim();
-        if (c === "disp") return null;
-        // Supporto per: 4p01, m204, 1c11, co03
+        if (c === "disp" || c.length < 2) return null;
         let match = c.match(/^([a-z0-9]+?)([0-9]+)$/i);
         if (match) {
             return { or: c.toUpperCase(), l: match[1], t: parseInt(match[2], 10).toString() };
@@ -74,13 +65,13 @@
 
         document.getElementById('pDiv').style.display = "block";
         const log = document.getElementById('log');
-        log.innerText = "Analisi rotazioni...";
+        log.innerText = "Preparazione codici...";
 
         const rotText = await rotFile.text();
         const codiciRaw = rotText.match(/([a-zA-Z0-9]+)/g) || [];
         const mappa = Array.from(new Set(codiciRaw.map(c => JSON.stringify(parseCodice(c))))).map(s => JSON.parse(s)).filter(x => x !== null);
         
-        addLog("Cercando " + mappa.length + " codici univoci...");
+        addLog("Caricati " + mappa.length + " codici univoci.");
 
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -90,62 +81,61 @@
             document.getElementById('bar').style.width = (i/pdf.numPages*100) + "%";
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
-            
-            // Uniamo il testo senza ordinamento spaziale rigido per non perdere pezzi
-            const rawText = content.items.map(item => item.str).join(" ");
-            const text = rawText.replace(/\s+/g, " ");
+            const text = content.items.map(item => item.str).join(" ").replace(/\s+/g, " ");
 
-            // Ricerca Linea e Turno molto più permissiva
-            const lM = text.match(/Linea[:\s]+([A-Z0-9.]+)/i);
+            // Estrazione Linea e Turno (supporta anche il simbolo °)
+            const lM = text.match(/LINEA[:\s]+([A-Z0-9.]+)/i);
             const tM = text.match(/TURNO[:\s]+(\d+)/i);
 
             if (lM && tM) {
-                const lP = lM[1].toLowerCase().split('.')[0];
-                const tP = parseInt(tM[1], 10).toString();
+                const pdfL = lM[1].toLowerCase().replace(/[^a-z0-9]/g, '');
+                const pdfT = parseInt(tM[1], 10).toString();
                 
-                const targets = mappa.filter(c => c.l.toLowerCase() === lP && c.t === tP);
+                // Matching Intelligente: controlla se la linea del codice contiene o è contenuta nella linea PDF
+                const targets = mappa.filter(c => {
+                    if (c.t !== pdfT) return false;
+                    let cL = c.l.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    return cL.includes(pdfL) || pdfL.includes(cL);
+                });
 
                 if (targets.length > 0) {
-                    // Dividiamo la pagina in zona MONTA e zona SMONTA
-                    const indexS = text.indexOf("SMONTA");
-                    if (indexS !== -1) {
-                        const zonaM = text.substring(0, indexS);
-                        const zonaS = text.substring(indexS);
+                    // Area Dati: cerchiamo le coppie "Luogo + Ora" nel blocco MONTA/SMONTA
+                    const headerArea = text.split(/Nota servizio/i)[0];
+                    // Regex che cerca: TESTO MAIUSCOLO (Luogo) seguito da Orario (XX.XX)
+                    const pairRegex = /([A-Z.\s']{3,})\s+(\d{1,2}\.\d{2})/g;
+                    let matches = [];
+                    let m;
+                    while ((m = pairRegex.exec(headerArea)) !== null) {
+                        matches.push({ luogo: pulisciLuogo(m[1]), ora: m[2] });
+                    }
 
-                        // Estrazione Orari (formato HH.mm)
-                        const oraM = zonaM.match(/(\d{1,2}\.\d{2})/);
-                        const oraS = zonaS.match(/(\d{1,2}\.\d{2})/);
+                    if (matches.length >= 2) {
+                        const start = matches[0];
+                        const end = matches[matches.length - 1]; // Prende l'ultimo orario per gestire eventuali spezzati
 
-                        if (oraM && oraS) {
-                            targets.forEach(t => {
-                                // Il luogo è ciò che sta tra la parola MONTA e l'orario
-                                const luogoM = zonaM.match(/MONTA\s+(?:alle\s+)?(.*?)(?=\s\d{1,2}\.\d{2})/i);
-                                const luogoS = zonaS.match(/SMONTA\s+(?:alle\s+)?(.*?)(?=\s\d{1,2}\.\d{2})/i);
-
-                                dbTurni[t.or] = {
-                                    inizio: oraM[0].replace('.', ':'),
-                                    luogoInizio: pulisciLuogo(luogoM ? luogoM[1] : ""),
-                                    fine: oraS[0].replace('.', ':'),
-                                    luogoFine: pulisciLuogo(luogoS ? luogoS[1] : "")
-                                };
-                                addLog("TROVATO: " + t.or);
-                            });
-                        }
+                        targets.forEach(t => {
+                            dbTurni[t.or] = {
+                                inizio: start.ora.replace('.', ':'),
+                                luogoInizio: start.luogo,
+                                fine: end.ora.replace('.', ':'),
+                                luogoFine: end.luogo
+                            };
+                            addLog("TROVATO: " + t.or + " (Pag " + i + ")");
+                        });
                     }
                 }
             }
-            if (i % 10 === 0) await new Promise(r => setTimeout(r, 1));
         }
 
         if (Object.keys(dbTurni).length > 0) {
             const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "database_turni.json";
+            a.download = "database_turni_v2.8.json";
             a.click();
-            addLog("\nFINE! Database generato con " + Object.keys(dbTurni).length + " turni.");
+            addLog("\nFINE! Generati " + Object.keys(dbTurni).length + " turni.");
         } else {
-            addLog("\nNESSUN MATCH. Prova a controllare se il PDF è leggibile (seleziona il testo con il mouse nel PDF).");
+            addLog("\nERRORE: Ancora nessun match. Verifica che i codici in rotazioni.txt (es. 4p29) corrispondano alle linee del PDF.");
         }
     });
 </script>
