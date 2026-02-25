@@ -3,38 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Estrattore Turni Professional</title>
+    <title>Parser Turni ATVO v2.2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f0f2f5; color: #333; }
         .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #1a73e8; text-align: center; }
+        h1 { color: #1a73e8; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .upload-box { border: 2px dashed #ccc; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center; background: #fafafa; }
-        .upload-box:hover { border-color: #1a73e8; }
-        label { font-weight: bold; display: block; margin-bottom: 10px; }
         button { background: #1a73e8; color: white; border: none; padding: 15px; border-radius: 6px; cursor: pointer; width: 100%; font-size: 1.1rem; font-weight: bold; }
-        button:disabled { background: #ccc; }
-        #log { margin-top: 20px; padding: 15px; background: #333; color: #00ff00; border-radius: 6px; font-family: monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto; display: none; }
+        #log { margin-top: 20px; padding: 15px; background: #1e1e1e; color: #adff2f; border-radius: 6px; font-family: monospace; font-size: 0.85rem; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Parser Turni v2.0</h1>
+    <h1>Parser Turni v2.2</h1>
     
     <div class="upload-box">
-        <label>1. Carica il file delle Rotazioni (.txt)</label>
+        <label>1. Carica <b>rotazioni.txt</b></label><br><br>
         <input type="file" id="rotTxt" accept=".txt">
     </div>
 
     <div class="upload-box">
-        <label>2. Carica il PDF completo dei Turni</label>
+        <label>2. Carica <b>PDF Completo Turni</b></label><br><br>
         <input type="file" id="pdfFile" accept="application/pdf">
     </div>
 
     <button id="startBtn">Genera Database JSON</button>
 
-    <div id="log"></div>
+    <div id="log">Pronto per l'analisi...</div>
 </div>
 
 <script>
@@ -43,9 +40,28 @@
 
     const logDiv = document.getElementById('log');
     function addLog(msg) {
-        logDiv.style.display = 'block';
-        logDiv.innerHTML += "> " + msg + "<br>";
+        logDiv.innerText += "\n> " + msg;
         logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // Funzione per scomporre i codici in modo flessibile
+    function parseCodice(codice) {
+        codice = codice.toLowerCase().trim();
+        if (codice === 'disp') return null;
+
+        // Caso M204 (Lettera + NumeroLinea + NumeroTurno)
+        let matchM = codice.match(/^([a-z]\d)(\d+)$/);
+        if (matchM) {
+            return { originale: codice.toUpperCase(), linea: matchM[1], turno: parseInt(matchM[2], 10).toString() };
+        }
+
+        // Caso 4P01 (NumeroLinea + Lettera + NumeroTurno)
+        let matchStd = codice.match(/^(\d+)[a-z](\d+)$/);
+        if (matchStd) {
+            return { originale: codice.toUpperCase(), linea: matchStd[1], turno: parseInt(matchStd[2], 10).toString() };
+        }
+
+        return null;
     }
 
     document.getElementById('startBtn').addEventListener('click', async () => {
@@ -53,26 +69,24 @@
         const pdfFile = document.getElementById('pdfFile').files[0];
 
         if (!rotFile || !pdfFile) {
-            alert("Carica entrambi i file per procedere.");
+            alert("Carica entrambi i file.");
             return;
         }
 
-        logDiv.innerHTML = "";
-        addLog("Lettura file rotazioni...");
-        
+        logDiv.innerText = "Analisi rotazioni...";
         const rotText = await rotFile.text();
-        // Estraiamo tutti i codici ignorando le intestazioni e le virgole
-        const regexCodice = /(\d+[a-zA-Z]\d+)/g;
-        const codiciTrovati = [...new Set(rotText.match(regexCodice))];
+        const codiciEstratti = rotText.match(/([a-zA-Z0-9]+)/g) || [];
         
-        addLog("Codici unici individuati nella rotazione: " + codiciTrovati.length);
+        const mappaTarget = codiciEstratti
+            .map(c => parseCodice(c))
+            .filter(c => c !== null);
 
-        const codiciMappati = codiciTrovati.map(c => {
-            const parts = c.match(/^(\d+)[a-zA-Z](\d+)$/);
-            return { originale: c.toUpperCase(), linea: parts[1], turno: parseInt(parts[2], 10).toString() };
-        });
+        // Rimuovi duplicati basati sull'originale
+        const mappaUnica = Array.from(new Set(mappaTarget.map(a => JSON.stringify(a))))
+            .map(a => JSON.parse(a));
 
-        addLog("Inizio analisi PDF...");
+        addLog("Cercando dettagli per " + mappaUnica.length + " turni unici...");
+
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
         let dbTurni = {};
@@ -82,40 +96,46 @@
             const content = await page.getTextContent();
             const text = content.items.map(item => item.str).join(" ");
             
-            const lineaMatch = text.match(/Linea:\s*(\d+\.?\d*)/i);
-            const turnoMatch = text.match(/TURNO:\s*(\d+)°/i);
+            // Estrazione Linea e Turno dal testo della pagina
+            const lineaMatch = text.match(/Linea:\s*([a-zA-Z0-9.]+)/i);
+            const turnoMatch = text.match(/TURNO:\s*(\d+)/i);
 
             if (lineaMatch && turnoMatch) {
-                const lPDF = lineaMatch[1];
-                const tPDF = turnoMatch[1];
+                const lPDF = lineaMatch[1].toLowerCase().replace('.1','').replace('.2','');
+                const tPDF = parseInt(turnoMatch[1], 10).toString();
 
-                const matchCodice = codiciMappati.find(c => c.linea === lPDF && c.turno === tPDF);
+                const coincidenze = mappaUnica.filter(c => c.linea.toLowerCase() === lPDF && c.turno === tPDF);
 
-                if (matchCodice) {
-                    const mMatch = text.match(/MONTA\s+alle\s+([A-Z.\s]+)\s+(\d{1,2}\.\d{2})/i);
-                    const sMatch = text.match(/SMONTA\s+([A-Z.\s]+)\s+alle\s+(\d{1,2}\.\d{2})/i);
+                if (coincidenze.length > 0) {
+                    const mMatch = text.match(/MONTA\s+(?:alle\s+)?([A-Z.\s]+)\s+(\d{1,2}\.\d{2})/i);
+                    const sMatch = text.match(/SMONTA\s+(?:alle\s+)?([A-Z.\s]+)\s+(\d{1,2}\.\d{2})/i);
 
                     if (mMatch && sMatch) {
-                        dbTurni[matchCodice.originale] = {
-                            inizio: mMatch[2].replace('.', ':'),
-                            luogoInizio: mMatch[1].trim(),
-                            fine: sMatch[2].replace('.', ':'),
-                            luogoFine: sMatch[1].trim()
-                        };
-                        addLog("Estratto: " + matchCodice.originale);
+                        coincidenze.forEach(target => {
+                            dbTurni[target.originale] = {
+                                inizio: mMatch[2].replace('.', ':'),
+                                luogoInizio: mMatch[1].trim(),
+                                fine: sMatch[2].replace('.', ':'),
+                                luogoFine: sMatch[1].trim()
+                            };
+                            addLog("OK: " + target.originale + " (Linea " + lPDF + " Turno " + tPDF + ")");
+                        });
                     }
                 }
             }
         }
 
-        addLog("Analisi terminata. Generazione file...");
-        const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "database_turni.json";
-        a.click();
-        addLog("File scaricato con successo.");
+        if (Object.keys(dbTurni).length > 0) {
+            const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "database_turni.json";
+            a.click();
+            addLog("DATABASE GENERATO CON SUCCESSO!");
+        } else {
+            addLog("ERRORE: Nessun turno trovato nel PDF. Controlla il formato dei numeri linea.");
+        }
     });
 </script>
 </body>
