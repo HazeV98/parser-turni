@@ -271,7 +271,7 @@
             const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "info_turni_actv.json";
+            a.download = "info_turni.json";
             a.click();
             addLog("\nFINE! Creato database con " + trovatiCount + " turni.", "#18ffff");
         } else {
@@ -281,4 +281,5 @@
 </script>
 </body>
 </html>
+
 
