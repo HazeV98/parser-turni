@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ACTV</title>
+    <title>Parser Turni ACTV v2.0</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root { --primary: #00796b; --primary-dark: #004d40; --bg: #eef2f5; }
@@ -13,9 +13,9 @@
         
         .upload-section { 
             display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
-            gap: 15px; 
-            margin: 20px 0; 
+            grid-template-columns: 1fr; 
+            max-width: 500px;
+            margin: 20px auto; 
         }
         
         .box { 
@@ -84,30 +84,24 @@
 <body>
 
 <div class="container">
-    <h1>Parser Turni ACTV</h1>
+    <h1>Parser Turni ACTV v2.0</h1>
     
     <div class="upload-section">
-        <div class="box" id="drop-zone-rot">
-            <label>1. Carica <b>rotazioni.json</b></label>
-            <span class="file-name" id="name-rot">Nessun file selezionato</span>
-            <input type="file" id="rotJson" accept=".json">
-        </div>
         <div class="box" id="drop-zone-pdf">
-            <label>2. Carica <b>PDF Turni</b></label>
+            <label>Carica <b>PDF Turni ACTV</b></label>
             <span class="file-name" id="name-pdf">Nessun file selezionato</span>
             <input type="file" id="pdfFile" accept="application/pdf">
         </div>
     </div>
 
     <div class="progress" id="pDiv"><div id="bar"></div></div>
-    <button id="startBtn">Avvia Estrazione Dati</button>
+    <button id="startBtn">Avvia Estrazione Globale</button>
     
     <div class="stat-box">
-        <span id="statTot">Codici: 0</span>
-        <span id="statTrovati">Trovati: 0</span>
+        <span id="statTrovati">Codici Generati: 0</span>
     </div>
     
-    <div id="log">Trascina i file o clicca sui riquadri per iniziare.</div>
+    <div id="log">Trascina il PDF o clicca sul riquadro per iniziare.</div>
 </div>
 
 <script>
@@ -132,7 +126,6 @@
         });
     }
 
-    setupDropZone('rotJson', 'drop-zone-rot', 'name-rot');
     setupDropZone('pdfFile', 'drop-zone-pdf', 'name-pdf');
 
     function addLog(msg, color = "#80cbc4") {
@@ -150,59 +143,45 @@
                 .replace(/\s+/g, ' ').trim();
     }
 
-    function matchLineeACTV(codPref, pdfLin) {
-        const c = codPref.toUpperCase();
-        const p = pdfLin.toUpperCase().replace(/\s+/g, '');
-        if (c === "1C") return p === "1";
-        if (c === "2C") return p === "2";
-        if (c === "3P") return p === "3";
-        if (c === "4P") return p === "4.1";
-        if (c === "5P") return p === "5.1";
-        if (c === "6P") return p === "6";
-        if (c === "7P") return p === "7";
-        if (c === "M1") return p === "M1";
-        if (c === "M2") return p === "M2";
-        return false;
-    }
+    // Funzione centrale per generare i codici multipli in base alla Linea e Turno estratti
+    function generaCodiciMansione(lineaPDF, turnoPDF) {
+        const l = lineaPDF.toUpperCase().replace(/\s+/g, '');
+        const numTurno = parseInt(turnoPDF, 10);
+        
+        // Format turno a due cifre (es: 01, 05, 12)
+        const strT = numTurno.toString().padStart(2, '0');
+        // Format turno + 50 a due cifre
+        const strT50 = (numTurno + 50).toString().padStart(2, '0');
 
-    function parseCodice(c) {
-        if (!c || typeof c !== 'string') return null;
-        c = c.toLowerCase().trim();
-        if (c === "disp" || c.length < 3) return null;
-        let match = c.match(/^(\d+[a-z]|[a-z]\d+|[a-z]{2,})(\d+)$/i);
-        if (match) {
-            return { or: c.toUpperCase(), pref: match[1].toUpperCase(), num: parseInt(match[2], 10).toString() };
+        let codici = [];
+
+        // Linee Gruppo 1
+        if (l === "1" || l === "L1") codici.push("1C" + strT, "1B" + strT);
+        else if (l === "2" || l === "L2") codici.push("2C" + strT, "2B" + strT);
+        else if (l === "3" || l === "L3") codici.push("3P" + strT, "3B" + strT);
+        else if (l === "4.1" || l === "4.2" || l === "4") codici.push("4P" + strT, "4B" + strT);
+        else if (l === "5.1" || l === "5.2" || l === "5") codici.push("5P" + strT, "5B" + strT);
+        else if (l === "6" || l === "L6") codici.push("6P" + strT, "6B" + strT);
+        else if (l === "7" || l === "L7") codici.push("7P" + strT, "7B" + strT);
+        else if (l === "8" || l === "L8") codici.push("8P" + strT, "8B" + strT);
+        
+        // Linee Gruppo 2 (e casi speciali)
+        else if (l === "PO") codici.push("PO" + strT); // Eccezione con un solo codice
+        else if (["11", "12", "13", "14", "17", "M1", "M2", "M3", "PT", "AG", "AD", "PR", "AT", "AF", "AC"].includes(l)) {
+            codici.push(l + strT, l + strT50);
         }
-        return null;
+
+        return codici;
     }
 
     document.getElementById('startBtn').addEventListener('click', async () => {
-        const rotFile = document.getElementById('rotJson').files[0];
         const pdfFile = document.getElementById('pdfFile').files[0];
-        if(!rotFile || !pdfFile) return alert("Per favore, carica entrambi i file!");
+        if(!pdfFile) return alert("Per favore, carica il file PDF dei turni!");
 
         document.getElementById('pDiv').style.display = "block";
         document.getElementById('log').innerHTML = "";
         
-        // Estrazione codici da JSON (tutte le chiavi)
-        let mappa = [];
-        try {
-            const rotData = JSON.parse(await rotFile.text());
-            let codiciFlat = [];
-            for (let key in rotData) {
-                if (Array.isArray(rotData[key])) {
-                    codiciFlat = codiciFlat.concat(rotData[key]);
-                }
-            }
-            mappa = Array.from(new Set(codiciFlat.map(c => JSON.stringify(parseCodice(c)))))
-                         .map(s => JSON.parse(s))
-                         .filter(x => x !== null);
-        } catch (e) {
-            return alert("Errore nel formato del file JSON!");
-        }
-        
-        document.getElementById('statTot').innerText = "Codici: " + mappa.length;
-        addLog("Inizio analisi di " + mappa.length + " turni ACTV...");
+        addLog("Inizio scansione globale del PDF...");
 
         const arrayBuffer = await pdfFile.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -215,14 +194,18 @@
             const content = await page.getTextContent();
             const cleanText = content.items.map(item => item.str).join(" ").replace(/\s+/g, " ");
 
+            // La magia del multi-blocco: dividiamo la pagina per la parola TURNO
             const turniNellaPagina = cleanText.split(/TURNO[:\s]+/i);
 
             for (let b = 1; b < turniNellaPagina.length; b++) {
                 const bloccoTurno = turniNellaPagina[b];
+                
+                // Estrae il numero del turno
                 const numMatch = bloccoTurno.match(/^(\d+)/);
                 if (!numMatch) continue;
                 const pdfT = parseInt(numMatch[1], 10).toString();
 
+                // Estrae la linea
                 let pdfL = "";
                 const linMatch = bloccoTurno.match(/LINEA[:\s]+([A-Z0-9.]+)/i);
                 if (linMatch) {
@@ -232,10 +215,11 @@
                     if (globalLinMatch) pdfL = globalLinMatch[1].trim();
                 }
 
-                if(pdfL && pdfT) {
-                    const targets = mappa.filter(c => c.num === pdfT && matchLineeACTV(c.pref, pdfL));
+                if (pdfL && pdfT) {
+                    // Ottiene i codici differenziati per Pilota e Marinaio
+                    const codiciDaGenerare = generaCodiciMansione(pdfL, pdfT);
 
-                    if (targets.length > 0) {
+                    if (codiciDaGenerare.length > 0) {
                         const headerArea = bloccoTurno.split(/(?:Nota servizio|EQUIPAGGIO|LIN\s+TV)/i)[0];
                         const pairRegex = /([A-Z.\s'\/]{3,})\s+(\d{1,2}\.\d{2})/g;
                         let matches = [];
@@ -248,17 +232,17 @@
                             const start = matches[0];
                             const end = matches[matches.length - 1];
 
-                            targets.forEach(t => {
-                                if (!dbTurni[t.or]) {
-                                    dbTurni[t.or] = {
+                            codiciDaGenerare.forEach(codice => {
+                                if (!dbTurni[codice]) {
+                                    dbTurni[codice] = {
                                         inizio: start.ora.replace('.', ':'),
                                         luogoInizio: start.luogo,
                                         fine: end.ora.replace('.', ':'),
                                         luogoFine: end.luogo
                                     };
                                     trovatiCount++;
-                                    document.getElementById('statTrovati').innerText = "Trovati: " + trovatiCount;
-                                    addLog("OK: " + t.or + " (" + pdfL + " T." + pdfT + ")", "#00e676");
+                                    document.getElementById('statTrovati').innerText = "Codici Generati: " + trovatiCount;
+                                    addLog("CREATO: " + codice + " (Trovato: L." + pdfL + " T." + pdfT + ")", "#00e676");
                                 }
                             });
                         }
@@ -271,15 +255,13 @@
             const blob = new Blob([JSON.stringify(dbTurni, null, 2)], { type: "application/json" });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = "info_turni.json";
+            a.download = "info_turni_actv_completo.json";
             a.click();
-            addLog("\nFINE! Creato database con " + trovatiCount + " turni.", "#18ffff");
+            addLog("\nFINE! Creato database con " + trovatiCount + " codici.", "#18ffff");
         } else {
-            addLog("\nNESSUN MATCH: Verifica la corrispondenza tra JSON e PDF.", "#ff5252");
+            addLog("\nNESSUN TURNO TROVATO: Assicurati che il formato del PDF sia corretto.", "#ff5252");
         }
     });
 </script>
 </body>
 </html>
-
-
