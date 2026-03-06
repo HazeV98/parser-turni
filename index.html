@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parser Turni ACTV v2.0</title>
+    <title>Parser Turni ACTV v2.1</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#00796b">
+    <link rel="apple-touch-icon" href="icon.svg">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root { --primary: #00796b; --primary-dark: #004d40; --bg: #eef2f5; }
@@ -11,6 +16,23 @@
         .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
         h1 { color: var(--primary); text-align: center; border-bottom: 3px solid #b2dfdb; padding-bottom: 10px; font-size: 1.8rem; }
         
+        /* Stile per il tasto di installazione */
+        #installBtn {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: none; /* Nascosto di default */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        #installBtn:hover { background: #e68a00; }
+
         .upload-section { 
             display: grid; 
             grid-template-columns: 1fr; 
@@ -33,7 +55,7 @@
         .box input { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
         .file-name { display: block; margin-top: 10px; font-size: 0.85rem; color: #666; font-style: italic; }
 
-        button { 
+        button.action-btn { 
             background: var(--primary); 
             color: white; 
             border: none; 
@@ -46,8 +68,8 @@
             transition: 0.3s;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        button:hover { background: var(--primary-dark); }
-        button:active { transform: translateY(1px); }
+        button.action-btn:hover { background: var(--primary-dark); }
+        button.action-btn:active { transform: translateY(1px); }
 
         #log { 
             margin-top: 20px; 
@@ -84,8 +106,10 @@
 <body>
 
 <div class="container">
-    <h1>Parser Turni ACTV v2.0</h1>
+    <h1>Parser Turni ACTV v2.1</h1>
     
+    <button id="installBtn">📲 Installa App sul Dispositivo</button>
+
     <div class="upload-section">
         <div class="box" id="drop-zone-pdf">
             <label>Carica <b>PDF Turni ACTV</b></label>
@@ -95,7 +119,7 @@
     </div>
 
     <div class="progress" id="pDiv"><div id="bar"></div></div>
-    <button id="startBtn">Avvia Estrazione Globale</button>
+    <button id="startBtn" class="action-btn">Avvia Estrazione Globale</button>
     
     <div class="stat-box">
         <span id="statTrovati">Codici Generati: 0</span>
@@ -148,14 +172,11 @@
         const l = lineaPDF.toUpperCase().replace(/\s+/g, '');
         const numTurno = parseInt(turnoPDF, 10);
         
-        // Format turno a due cifre (es: 01, 05, 12)
         const strT = numTurno.toString().padStart(2, '0');
-        // Format turno + 50 a due cifre
         const strT50 = (numTurno + 50).toString().padStart(2, '0');
 
         let codici = [];
 
-        // Linee Gruppo 1
         if (l === "1" || l === "L1") codici.push("1C" + strT, "1B" + strT);
         else if (l === "2" || l === "L2") codici.push("2C" + strT, "2B" + strT);
         else if (l === "3" || l === "L3") codici.push("3P" + strT, "3B" + strT);
@@ -164,9 +185,7 @@
         else if (l === "6" || l === "L6") codici.push("6P" + strT, "6B" + strT);
         else if (l === "7" || l === "L7") codici.push("7P" + strT, "7B" + strT);
         else if (l === "8" || l === "L8") codici.push("8P" + strT, "8B" + strT);
-        
-        // Linee Gruppo 2 (e casi speciali)
-        else if (l === "PO") codici.push("PO" + strT); // Eccezione con un solo codice
+        else if (l === "PO") codici.push("PO" + strT); 
         else if (["11", "12", "13", "14", "17", "M1", "M2", "M3", "PT", "AG", "AD", "PR", "AT", "AF", "AC"].includes(l)) {
             codici.push(l + strT, l + strT50);
         }
@@ -194,18 +213,15 @@
             const content = await page.getTextContent();
             const cleanText = content.items.map(item => item.str).join(" ").replace(/\s+/g, " ");
 
-            // La magia del multi-blocco: dividiamo la pagina per la parola TURNO
             const turniNellaPagina = cleanText.split(/TURNO[:\s]+/i);
 
             for (let b = 1; b < turniNellaPagina.length; b++) {
                 const bloccoTurno = turniNellaPagina[b];
                 
-                // Estrae il numero del turno
                 const numMatch = bloccoTurno.match(/^(\d+)/);
                 if (!numMatch) continue;
                 const pdfT = parseInt(numMatch[1], 10).toString();
 
-                // Estrae la linea
                 let pdfL = "";
                 const linMatch = bloccoTurno.match(/LINEA[:\s]+([A-Z0-9.]+)/i);
                 if (linMatch) {
@@ -216,11 +232,30 @@
                 }
 
                 if (pdfL && pdfT) {
-                    // Ottiene i codici differenziati per Pilota e Marinaio
                     const codiciDaGenerare = generaCodiciMansione(pdfL, pdfT);
 
                     if (codiciDaGenerare.length > 0) {
                         const headerArea = bloccoTurno.split(/(?:Nota servizio|EQUIPAGGIO|LIN\s+TV)/i)[0];
+                        
+                        // 1. Estrazione della stringa di validità settimanale
+                        let giorniValidi = ["_LUN", "_MAR", "_MER", "_GIO", "_VEN", "_SAB", "_DOM"]; // Fallback standard
+                        const valMatch = headerArea.match(/Validit[aà]:\s*([a-zA-Z\-_ ]{7,15})/i);
+                        
+                        if (valMatch) {
+                            let v = valMatch[1].replace(/\s+/g, '');
+                            if (v.length >= 7) {
+                                giorniValidi = [];
+                                if (v[0] !== '_' && v[0] !== '-') giorniValidi.push("_LUN");
+                                if (v[1] !== '_' && v[1] !== '-') giorniValidi.push("_MAR");
+                                if (v[2] !== '_' && v[2] !== '-') giorniValidi.push("_MER");
+                                if (v[3] !== '_' && v[3] !== '-') giorniValidi.push("_GIO");
+                                if (v[4] !== '_' && v[4] !== '-') giorniValidi.push("_VEN");
+                                if (v[5] !== '_' && v[5] !== '-') giorniValidi.push("_SAB");
+                                if (v[6] !== '_' && v[6] !== '-') giorniValidi.push("_DOM");
+                            }
+                        }
+
+                        // 2. Estrazione orari e luoghi
                         const pairRegex = /([A-Z.\s'\/]{3,})\s+(\d{1,2}\.\d{2})/g;
                         let matches = [];
                         let m;
@@ -232,18 +267,22 @@
                             const start = matches[0];
                             const end = matches[matches.length - 1];
 
-                            codiciDaGenerare.forEach(codice => {
-                                if (!dbTurni[codice]) {
-                                    dbTurni[codice] = {
-                                        inizio: start.ora.replace('.', ':'),
-                                        luogoInizio: start.luogo,
-                                        fine: end.ora.replace('.', ':'),
-                                        luogoFine: end.luogo
-                                    };
-                                    trovatiCount++;
-                                    document.getElementById('statTrovati').innerText = "Codici Generati: " + trovatiCount;
-                                    addLog("CREATO: " + codice + " (Trovato: L." + pdfL + " T." + pdfT + ")", "#00e676");
-                                }
+                            // 3. Generazione multipla incrociata (Mansione x Giorno)
+                            codiciDaGenerare.forEach(codiceBase => {
+                                giorniValidi.forEach(suffissoGiorno => {
+                                    const codiceFinale = codiceBase + suffissoGiorno;
+                                    if (!dbTurni[codiceFinale]) {
+                                        dbTurni[codiceFinale] = {
+                                            inizio: start.ora.replace('.', ':'),
+                                            luogoInizio: start.luogo,
+                                            fine: end.ora.replace('.', ':'),
+                                            luogoFine: end.luogo
+                                        };
+                                        trovatiCount++;
+                                        document.getElementById('statTrovati').innerText = "Codici Generati: " + trovatiCount;
+                                        addLog("CREATO: " + codiceFinale + " (Trovato: L." + pdfL + " T." + pdfT + ")", "#00e676");
+                                    }
+                                });
                             });
                         }
                     }
@@ -260,6 +299,31 @@
             addLog("\nFINE! Creato database con " + trovatiCount + " codici.", "#18ffff");
         } else {
             addLog("\nNESSUN TURNO TROVATO: Assicurati che il formato del PDF sia corretto.", "#ff5252");
+        }
+    });
+
+    // --- LOGICA DI INSTALLAZIONE PWA ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.error("Errore Service Worker:", err));
+    }
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBtn.style.display = 'block'; // Mostra il tasto quando il browser è pronto
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installBtn.style.display = 'none'; // Nasconde il tasto dopo l'installazione
+            }
+            deferredPrompt = null;
         }
     });
 </script>
